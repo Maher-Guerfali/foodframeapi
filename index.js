@@ -25,7 +25,7 @@ const databaseSchema = {
       { name: "raw_user_meta_data", type: "jsonb", description: "Additional user metadata" }
     ]
   },
-  public_users: {
+  users: {
     description: "Application-specific user details",
     columns: [
       { name: "id", type: "uuid", description: "Unique user identifier" },
@@ -105,7 +105,7 @@ app.get('/api/schema', (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('public_users')
+      .from('users')
       .select(`
         *,
         profiles(*),
@@ -127,7 +127,7 @@ app.get('/api/users', async (req, res) => {
 app.get('/api/users/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('public_users')
+      .from('users')
       .select(`
         *,
         profiles(*),
@@ -159,7 +159,7 @@ app.get('/api/users/:id', async (req, res) => {
 app.post('/api/users', validateRequired(['username', 'age']), async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('public_users')
+      .from('users')
       .insert([req.body])
       .select();
     
@@ -179,7 +179,7 @@ app.post('/api/users', validateRequired(['username', 'age']), async (req, res) =
 app.put('/api/users/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('public_users')
+      .from('users')
       .update(req.body)
       .eq('id', req.params.id)
       .select();
@@ -212,7 +212,7 @@ app.patch('/api/users/:id', async (req, res) => {
     );
     
     const { data, error } = await supabase
-      .from('public_users')
+      .from('users')
       .update(updateData)
       .eq('id', req.params.id)
       .select();
@@ -240,7 +240,7 @@ app.patch('/api/users/:id', async (req, res) => {
 app.delete('/api/users/:id', async (req, res) => {
   try {
     const { data, error } = await supabase
-      .from('public_users')
+      .from('users')
       .delete()
       .eq('id', req.params.id)
       .select();
@@ -560,7 +560,7 @@ app.get('/api/users/search', async (req, res) => {
   try {
     const { q, goal, minAge, maxAge } = req.query;
     
-    let query = supabase.from('public_users').select('*');
+    let query = supabase.from('users').select('*');
     
     if (q) {
       query = query.or(`username.ilike.%${q}%,goals.ilike.%${q}%`);
