@@ -6,15 +6,43 @@ const express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
 
+// ---------- Boot diagnostics ----------
+console.log("Booting Nutrition API…");
+console.log("Node version:", process.version);
+console.log("DATABASE_URL present?", Boolean(process.env.DATABASE_URL));
+
+process.on("unhandledRejection", (e) => {
+  console.error("UNHANDLED REJECTION:", e);
+});
+process.on("uncaughtException", (e) => {
+  console.error("UNCAUGHT EXCEPTION:", e);
+});
+
+// ---------- App ----------
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-// ---- Postgres (Supabase) ----
+// ---------- Postgres (Supabase) ----------
+if (!process.env.DATABASE_URL) {
+  console.error(
+    "Missing DATABASE_URL. Set it in Render → Environment → Environment Variables."
+  );
+}
+
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }, // Supabase SSL
+  max: 5,                    // few concurrent conns is fine on Render free/low tiers
+  idleTimeoutMillis: 30000,  // 30s
+  connectionTimeoutMillis: 10000, // 10s connect timeout
 });
+
+// Probe connection on boot (fail loud in logs, but keep server up)
+pool
+  .query("select 1 as ok")
+  .then(() => console.log("DB connection OK"))
+  .catch((e) => console.error("DB connection FAILED:", e.message));
 
 // Helper: clamp to >= 0 (for remove ops)
 const clampNonNeg = (n) => (n < 0 ? 0 : n);
@@ -22,19 +50,37 @@ const clampNonNeg = (n) => (n < 0 ? 0 : n);
 // Helper: list of numeric nutrient fields we accept
 const NUTRIENT_FIELDS = ["calories", "protein", "carbs", "fats", "fiber", "water"];
 
-// ---- Health check ----
+// ---------- Health checks ----------
 app.get("/", (_req, res) => res.send("Nutrition API is up!"));
+
+app.get("/health/db", async (_req, res) => {
+  try {
+    const { rows } = await pool.query("select now() as now");
+    res.json({ ok: true, now: rows[0].now });
+  } catch (e) {
+    console.error("DB health error:", e);
+    res.status(500).json({
+      ok: false,
+      code: e.code || null,
+      message: e.message,
+    });
+  }
+});
 
 // ---------- USERS ----------
 
 // Get all users
-app.get("/api/users", async (req, res) => {
+app.get("/api/users", async (_req, res) => {
   try {
     const { rows } = await pool.query(`SELECT * FROM users ORDER BY created_at DESC`);
     res.json(rows);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch users" });
+    console.error("GET /api/users error:", err);
+    res.status(500).json({
+      error: "Failed to fetch users",
+      code: err.code || null,
+      message: err.message,
+    });
   }
 });
 
@@ -42,7 +88,7 @@ app.get("/api/users", async (req, res) => {
 app.get("/api/users/:id", async (req, res) => {
   const userId = req.params.id;
 
-  // Week range (Mon–Sun) in server local time
+  // Week range (Mon–Sun) in server time
   const today = new Date();
   const day = today.getDay(); // 0=Sun .. 6=Sat
   const diffToMonday = (day + 6) % 7; // days to Monday
@@ -77,28 +123,22 @@ app.get("/api/users/:id", async (req, res) => {
       weeklyIntakeThisWeek: weeklyQ.rows,
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to fetch user" });
+    console.error("GET /api/users/:id error:", err);
+    res.status(500).json({
+      error: "Failed to fetch user",
+      code: err.code || null,
+      message: err.message,
+    });
   }
 });
 
 // ---------- INTAKES ----------
-// We support 3 endpoints you asked for:
 // 1) POST  /api/intake/add/:id     -> increment nutrients for given date/scope
 // 2) PUT   /api/intake/edit/:id    -> set (overwrite) nutrients for given date/scope
 // 3) POST  /api/intake/remove/:id  -> decrement nutrients for given date/scope
 //
-// Body format (for all three):
-// {
-//   "scope": "daily" | "weekly",
-//   "date": "YYYY-MM-DD",   // required
-//   "calories": 2000, "protein": 150, "carbs": 200, "fats": 80, "fiber": 25, "water": 2.5
-// }
-//
-// Notes:
-// - add:    creates if missing, otherwise increments existing values
-// - edit:   upserts the record to EXACTLY the provided values (missing fields default to 0)
-// - remove: decrements; clamped to >= 0; creates empty record if missing then applies clamp
+// Body:
+// { "scope": "daily" | "weekly", "date": "YYYY-MM-DD", ...numeric fields... }
 
 function tableForScope(scope) {
   if (scope === "daily") return "daily_intakes";
@@ -159,8 +199,12 @@ app.post("/api/intake/add/:id", async (req, res) => {
       return res.json({ status: "updated", intake: upd.rows[0] });
     }
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to add intake" });
+    console.error("POST /api/intake/add/:id error:", err);
+    res.status(500).json({
+      error: "Failed to add intake",
+      code: err.code || null,
+      message: err.message,
+    });
   }
 });
 
@@ -192,8 +236,12 @@ app.put("/api/intake/edit/:id", async (req, res) => {
     const up = await pool.query(q, [userId, date, ...vals]);
     res.json({ status: "upserted", intake: up.rows[0] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to edit intake" });
+    console.error("PUT /api/intake/edit/:id error:", err);
+    res.status(500).json({
+      error: "Failed to edit intake",
+      code: err.code || null,
+      message: err.message,
+    });
   }
 });
 
@@ -253,10 +301,17 @@ app.post("/api/intake/remove/:id", async (req, res) => {
 
     res.json({ status: "updated", intake: up.rows[0] });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Failed to remove intake" });
+    console.error("POST /api/intake/remove/:id error:", err);
+    res.status(500).json({
+      error: "Failed to remove intake",
+      code: err.code || null,
+      message: err.message,
+    });
   }
 });
+
+// ---------- 404 + error handler ----------
+app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
 // ----- Start server -----
 const PORT = process.env.PORT || 3000;
