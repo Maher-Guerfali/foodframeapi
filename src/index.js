@@ -23,45 +23,60 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // Get all users' data (admin only)
 app.get('/admin/users', async (req, res) => {
+  console.log('GET /admin/users - Request received');
+  
   try {
-    // In a real app, you'd want to verify admin privileges here
-    // For now, we'll just return all users
+    // Log environment variables (safely)
+    console.log('Supabase URL:', process.env.SUPABASE_URL ? '***URL is set***' : 'MISSING');
     
-    // Get all users with their profiles
+    // Get all users with their profiles and intake data in a single query
+    console.log('Fetching users with profiles and intake data...');
     const { data: users, error: usersError } = await supabase
-      .from('users')
-      .select('*');
+      .from('public_users')
+      .select(`
+        *,
+        profiles(*),
+        intake(*)
+      `);
 
     if (usersError) {
       console.error('Error fetching users:', usersError);
-      return res.status(500).json({ error: 'Error fetching users' });
+      return res.status(500).json({ 
+        success: false,
+        error: 'Error fetching users',
+        details: usersError.message 
+      });
     }
 
-    // For each user, get their intake data and notes
-    const usersWithDetails = await Promise.all(users.map(async (user) => {
-      // Get user's intake data
-      const { data: intakeData } = await supabase
-        .from('intake')
-        .select('*')
-        .eq('user_id', user.id);
-
-      // Get user's notes
-      const { data: notes } = await supabase
-        .from('notes')
-        .select('*')
-        .eq('user_id', user.id);
-
-      return {
-        ...user,
-        intake: intakeData || [],
-        notes: notes || []
-      };
+    // Format the response
+    const formattedUsers = users.map(user => ({
+      id: user.id,
+      auth_id: user.auth_id,
+      username: user.username,
+      age: user.age,
+      weight: user.weight,
+      height: user.height,
+      gender: user.gender,
+      goals: user.goals,
+      allergies: user.allergies,
+      profile: user.profiles || {},
+      intake: user.intake || []
     }));
 
-    res.json(usersWithDetails);
+    console.log('Sending response with user data');
+    res.json({
+      success: true,
+      count: formattedUsers.length,
+      data: formattedUsers
+    });
+    
   } catch (error) {
     console.error('Error in /admin/users:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(500).json({ 
+      success: false,
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
