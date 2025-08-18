@@ -107,9 +107,7 @@ app.get('/api/users', async (req, res) => {
     const { data, error } = await supabase
       .from('users')
       .select(`
-        *,
-        profiles(*),
-        intake(*)
+        *
       `);
     
     if (error) throw error;
