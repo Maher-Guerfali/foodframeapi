@@ -21,6 +21,50 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Get all users' data (admin only)
+app.get('/admin/users', async (req, res) => {
+  try {
+    // In a real app, you'd want to verify admin privileges here
+    // For now, we'll just return all users
+    
+    // Get all users with their profiles
+    const { data: users, error: usersError } = await supabase
+      .from('users')
+      .select('*');
+
+    if (usersError) {
+      console.error('Error fetching users:', usersError);
+      return res.status(500).json({ error: 'Error fetching users' });
+    }
+
+    // For each user, get their intake data and notes
+    const usersWithDetails = await Promise.all(users.map(async (user) => {
+      // Get user's intake data
+      const { data: intakeData } = await supabase
+        .from('intake')
+        .select('*')
+        .eq('user_id', user.id);
+
+      // Get user's notes
+      const { data: notes } = await supabase
+        .from('notes')
+        .select('*')
+        .eq('user_id', user.id);
+
+      return {
+        ...user,
+        intake: intakeData || [],
+        notes: notes || []
+      };
+    }));
+
+    res.json(usersWithDetails);
+  } catch (error) {
+    console.error('Error in /admin/users:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Get all data for a specific user by username
 app.get('/:username/getalldata', async (req, res) => {
   try {
