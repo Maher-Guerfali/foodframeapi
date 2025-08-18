@@ -149,12 +149,16 @@ app.patch('/:username/update', async (req, res) => {
   }
 });
 
-// Start server (only if this file is run directly)
+// Export the Express app for use in other files
+module.exports = app;
+
+// Only start the server if this file is run directly (not required)
 if (require.main === module) {
+  // Initialize Supabase client
+  const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  
+  // Start the server
   app.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
   });
 }
-
-// Export the Express app for use in other files
-module.exports = app;
