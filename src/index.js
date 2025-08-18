@@ -14,12 +14,36 @@ app.use(express.json());
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_ANON_KEY;
 
+// Test route
+app.get('/api/test', (req, res) => {
+  res.json({
+    success: true,
+    message: 'API is working!',
+    timestamp: new Date().toISOString()
+  });
+});
+
 if (!supabaseUrl || !supabaseKey) {
   console.error('Missing Supabase URL or Anon Key in environment variables');
   process.exit(1);
 }
 
 const supabase = createClient(supabaseUrl, supabaseKey);
+
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    service: 'FoodFrame API',
+    status: 'running',
+    timestamp: new Date().toISOString(),
+    endpoints: [
+      'GET    /api/test',
+      'GET    /admin/users',
+      'GET    /:username/getalldata',
+      'PATCH  /:username/update'
+    ]
+  });
+});
 
 // Get all users' data (admin only)
 app.get('/admin/users', async (req, res) => {
