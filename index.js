@@ -245,6 +245,45 @@ app.put("/api/intake/edit/:id", async (req, res) => {
   }
 });
 
+// ---------- ALERGY / NOTES / CONDITIONS ----------
+app.post("/api/alergy/:id", async (req, res) => {
+    const userId = req.params.id;
+    const { allergies, medical_notes, conditions } = req.body;
+  
+    try {
+      const q = `
+        UPDATE users
+        SET
+          allergies = COALESCE($2, allergies),
+          medical_notes = COALESCE($3, medical_notes),
+          conditions = COALESCE($4, conditions),
+          updated_at = NOW()
+        WHERE id = $1
+        RETURNING *`;
+  
+      const { rows } = await pool.query(q, [
+        userId,
+        allergies || null,
+        medical_notes || null,
+        conditions || null,
+      ]);
+  
+      if (rows.length === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+  
+      res.json({ status: "updated", user: rows[0] });
+    } catch (err) {
+      console.error("POST /api/alergy/:id error:", err);
+      res.status(500).json({
+        error: "Failed to update allergy/notes",
+        code: err.code || null,
+        message: err.message,
+      });
+    }
+  });
+  
+
 // REMOVE (decrement)
 app.post("/api/intake/remove/:id", async (req, res) => {
   const userId = req.params.id;
