@@ -282,6 +282,69 @@ app.post("/api/alergy/:id", async (req, res) => {
       });
     }
   });
+  // Create a new user
+app.post("/api/users", async (req, res) => {
+    const {
+      username,
+      age,
+      weight,
+      height,
+      gender = 'other',
+      goals = 'maintenance',
+      allergies = ['none'],
+      conditions = ['none'],
+      notes = []
+    } = req.body;
+  
+    if (!username) {
+      return res.status(400).json({ error: "Username is required" });
+    }
+  
+    try {
+      // Check if username already exists
+      const userCheck = await pool.query(
+        'SELECT id FROM users WHERE username = $1',
+        [username]
+      );
+  
+      if (userCheck.rows.length > 0) {
+        return res.status(409).json({ error: "Username already exists" });
+      }
+  
+      // Create new user
+      const { rows } = await pool.query(
+        `INSERT INTO users (
+          username, age, weight, height, gender, goals, 
+          allergies, conditions, notes
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *`,
+        [
+          username,
+          age,
+          weight,
+          height,
+          gender,
+          goals,
+          JSON.stringify(allergies),
+          JSON.stringify(conditions),
+          JSON.stringify(notes)
+        ]
+      );
+  
+      res.status(201).json({
+        user: rows[0],
+        dailyIntakeToday: null,
+        weeklyIntakeThisWeek: []
+      });
+    } catch (err) {
+      console.error("POST /api/users error:", err);
+      res.status(500).json({
+        error: "Failed to create user",
+        code: err.code || null,
+        message: err.message,
+      });
+    }
+  });
   
 
 // REMOVE (decrement)
